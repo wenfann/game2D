@@ -11,20 +11,6 @@ public class Fire_on : NewBehaviourScript
     [SerializeField] private float cooldown;
     private float cooldownTimer;
 
-    protected override void OnCollisionEnter2D(Collision2D collision)
-    {
-        if (isWorking)
-        {
-            base.OnCollisionEnter2D(collision);
-        }
-    }
-    protected override void RestartLevel()
-    {
-        if (isWorking)
-        {
-            base.RestartLevel();
-        }
-    }
     void Start()
     {
         anim = GetComponent<Animator>();

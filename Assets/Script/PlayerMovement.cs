@@ -4,53 +4,152 @@ using UnityEngine;
 
 public class PlayerMovement : MonoBehaviour
 {
-    private Rigidbody2D rb;
-    private Animator anim;
-    private float dirX;
+    private enum MovementState { idle, running, jumping, falling, slide }
     private SpriteRenderer sprite;
-    private BoxCollider2D coll;
+    private Animator anim;
 
-    private enum MovementState { idle, running, jumping, falling }
+    private float horizontal;
+    private float speed = 8f;
+    private float jumpingPower = 36f;
+    private bool isFacingRight = true;
 
-    [SerializeField] private LayerMask jumableGround;
+    private bool isWallSliding;
+    private float wallSlidingSpeed = 2f;
 
+    private bool isWallJumping;
+    private float wallJumpingDirection;
+    private float wallJumpingTime = 0.2f;
+    private float wallJumpingCounter;
+    private float wallJumpingDuration = 0.4f;
+    private Vector2 wallJumpingPower = new Vector2(8f, 16f);
+
+    [SerializeField] private Rigidbody2D rb;
+    [SerializeField] private Transform groundCheck;
+    [SerializeField] private LayerMask groundLayer;
+    [SerializeField] private Transform wallCheck;
+    [SerializeField] private LayerMask wallLayer;
     [SerializeField] private AudioSource jumpSoundEffect;
-    // Start is called before the first frame update
-    void Start()
+
+    private void Start()
     {
         rb = GetComponent<Rigidbody2D>();
-        anim = GetComponent<Animator>();
         sprite = GetComponent<SpriteRenderer>();
-        coll = GetComponent<BoxCollider2D>();
+        anim = GetComponent<Animator>();
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Update()
     {
-        dirX = Input.GetAxisRaw("Horizontal");
-        rb.velocity = new Vector2(dirX * 8, rb.velocity.y);
-        if ((Input.GetKeyDown("space") || Input.GetKeyDown("w")) && Isgrounded())
+        horizontal = Input.GetAxisRaw("Horizontal");
+        if (!isWallJumping)
+        {
+            rb.velocity = new Vector2(horizontal * speed, rb.velocity.y);
+        }
+        if ((Input.GetKeyDown("space") || Input.GetKeyDown("w")) && IsGrounded())
         {
             jumpSoundEffect.Play();
-            rb.velocity = new Vector2(rb.velocity.x, 18);
+            rb.velocity = new Vector2(rb.velocity.x, jumpingPower);
         }
 
+        if ((Input.GetKeyDown("space") || Input.GetKeyDown("w")) && rb.velocity.y > 0f)
+        {
+            rb.velocity = new Vector2(rb.velocity.x, rb.velocity.y * 0.5f);
+        }
+
+        WallSlide();
+        WallJump();
+        if (!isWallJumping)
+        {
+            Flip();
+        }
         UpdateAnimation();
+    }
+
+    private bool IsGrounded()
+    {
+        return Physics2D.OverlapCircle(groundCheck.position, 0.2f, groundLayer);
+    }
+
+    private bool IsWalled()
+    {
+        return Physics2D.OverlapCircle(wallCheck.position, 0.2f, wallLayer);
+    }
+
+    private void WallSlide()
+    {
+        if (IsWalled() && !IsGrounded() && horizontal != 0f)
+        {
+            isWallSliding = true;
+            rb.velocity = new Vector2(rb.velocity.x, Mathf.Clamp(rb.velocity.y, -wallSlidingSpeed, float.MaxValue));
+        }
+        else
+        {
+            isWallSliding = false;
+        }
+    }
+
+    private void WallJump()
+    {
+        if (isWallSliding)
+        {
+            isWallJumping = false;
+            wallJumpingDirection = -transform.localScale.x;
+            wallJumpingCounter = wallJumpingTime;
+
+            CancelInvoke(nameof(StopWallJumping));
+        }
+        else
+        {
+            wallJumpingCounter -= Time.deltaTime;
+        }
+
+        if ((Input.GetKeyDown("space") || Input.GetKeyDown("w")) && wallJumpingCounter > 0f)
+        {
+            jumpSoundEffect.Play();
+            isWallJumping = true;
+            rb.velocity = new Vector2(wallJumpingDirection * wallJumpingPower.x, wallJumpingPower.y);
+            wallJumpingCounter = 0f;
+
+            if (transform.localScale.x != wallJumpingDirection)
+            {
+                isFacingRight = !isFacingRight;
+                Vector3 localScale = transform.localScale;
+                localScale.x *= -1f;
+                transform.localScale = localScale;
+            }
+
+            Invoke(nameof(StopWallJumping), wallJumpingDuration);
+        }
+    }
+
+    private void StopWallJumping()
+    {
+        isWallJumping = false;
+    }
+
+    private void Flip()
+    {
+        if (isFacingRight && horizontal < 0f || !isFacingRight && horizontal > 0f)
+        {
+            isFacingRight = !isFacingRight;
+            Vector3 localScale = transform.localScale;
+            localScale.x *= -1f;
+            transform.localScale = localScale;
+        }
     }
 
     private void UpdateAnimation()
     {
         MovementState state;
 
-        if (dirX > 0)
+        if (horizontal > 0)
         {
             state = MovementState.running;
-            sprite.flipX = false;
+            Flip();
         }
-        else if (dirX < 0)
+        else if (horizontal < 0)
         {
             state = MovementState.running;
-            sprite.flipX = true;
+            Flip();
         }
         else
         {
@@ -65,12 +164,10 @@ public class PlayerMovement : MonoBehaviour
         {
             state = MovementState.falling;
         }
-
+        if (IsWalled() && !IsGrounded() && horizontal != 0f)
+        {
+            state = MovementState.slide;
+        }
         anim.SetInteger("state", (int)state);
-    }
-
-    private bool Isgrounded()
-    {
-        return Physics2D.BoxCast(coll.bounds.center, coll.bounds.size, 0f, Vector2.down, .1f, jumableGround);
     }
 }
